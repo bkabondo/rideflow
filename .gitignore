@@ -3,6 +3,3 @@ node_modules/
 .env.local
 .env
 scripts/
-.git-rewrite/
-
-scripts/
