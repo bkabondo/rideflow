@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import RiderDashboard from '@/components/dashboard/RiderDashboard'
 import DriverDashboard from '@/components/dashboard/DriverDashboard'
 import AdminDashboard from '@/components/dashboard/AdminDashboard'
@@ -11,15 +12,26 @@ export default async function DashboardPage() {
 
   if (!user) redirect('/login')
 
-  const { data: profile } = await supabase
+  let { data: profile } = await supabase
     .from('rideflow_users')
     .select('*')
     .eq('id', user.id)
     .single()
 
   if (!profile) {
-    // Auto-create profile if missing
-    redirect('/login')
+    const admin = createAdminClient()
+    await admin.from('rideflow_users').upsert(
+      {
+        id: user.id,
+        email: user.email ?? '',
+        full_name: user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'Rider',
+        role: 'rider',
+      },
+      { onConflict: 'id' }
+    )
+    const { data } = await admin.from('rideflow_users').select('*').eq('id', user.id).single()
+    if (!data) redirect('/login')
+    profile = data
   }
 
   return (
