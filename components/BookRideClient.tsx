@@ -82,15 +82,42 @@ function PaymentForm({ clientSecret, rideId, onSuccess }: { clientSecret: string
   )
 }
 
+async function getAddressFromCoords(lat: number, lon: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
+      { headers: { 'Accept-Language': 'en' } }
+    )
+    const data = await res.json()
+    return data.display_name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`
+  } catch {
+    return `${lat.toFixed(4)}, ${lon.toFixed(4)}`
+  }
+}
+
 export default function BookRideClient() {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
+  const [locating, setLocating] = useState(false)
   const [form, setForm] = useState({
     pickup_address: '',
     dropoff_address: '',
     ride_type: 'economy' as RideType,
   })
+
+  async function useMyLocation() {
+    if (!navigator.geolocation) { toast.error('Geolocation not supported'); return }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const address = await getAddressFromCoords(pos.coords.latitude, pos.coords.longitude)
+        setForm(f => ({ ...f, pickup_address: address }))
+        setLocating(false)
+      },
+      () => { toast.error('Could not get your location'); setLocating(false) }
+    )
+  }
   const [rideData, setRideData] = useState<RideData | null>(null)
   const [clientSecret, setClientSecret] = useState<string | null>(null)
 
@@ -162,8 +189,17 @@ export default function BookRideClient() {
                   placeholder="Enter pickup address"
                   value={form.pickup_address}
                   onChange={(e) => setForm({ ...form, pickup_address: e.target.value })}
-                  className="pl-8"
+                  className="pl-8 pr-36"
                 />
+                <button
+                  type="button"
+                  onClick={useMyLocation}
+                  disabled={locating}
+                  className="absolute right-2 top-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 disabled:opacity-50"
+                >
+                  <MapPin className="h-3 w-3" />
+                  {locating ? 'Locating…' : 'Use My Location'}
+                </button>
               </div>
             </div>
             <div className="space-y-2">

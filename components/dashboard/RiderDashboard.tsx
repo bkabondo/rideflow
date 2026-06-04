@@ -135,6 +135,18 @@ export default function RiderDashboard({ user }: RiderDashboardProps) {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
+            {/* Driver info — shown once a driver has accepted */}
+            {activeRide.driver && (
+              <div className="flex items-center gap-3 bg-white rounded-lg p-3 border border-blue-200">
+                <div className="bg-blue-600 text-white rounded-full h-10 w-10 flex items-center justify-center font-bold text-sm">
+                  {(activeRide.driver as {full_name?: string}).full_name?.charAt(0) ?? 'D'}
+                </div>
+                <div>
+                  <p className="font-semibold text-gray-800">{(activeRide.driver as {full_name?: string}).full_name ?? 'Your Driver'}</p>
+                  <p className="text-xs text-gray-500">⭐ {((activeRide.driver as {rating?: number}).rating ?? 5.0).toFixed(1)} · Your driver is on the way</p>
+                </div>
+              </div>
+            )}
             <div className="flex items-start gap-2">
               <MapPin className="h-4 w-4 text-green-600 mt-0.5" />
               <div>

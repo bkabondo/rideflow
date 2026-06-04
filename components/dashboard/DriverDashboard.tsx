@@ -191,6 +191,16 @@ export default function DriverDashboard({ user }: DriverDashboardProps) {
                         <Badge className="bg-yellow-100 text-yellow-700 capitalize">{ride.ride_type}</Badge>
                         <span className="text-sm text-gray-500">{ride.distance_km?.toFixed(1)} km • {ride.duration_minutes} min</span>
                       </div>
+                      {/* Rider info */}
+                      {ride.rider && (
+                        <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
+                          <div className="bg-gray-200 rounded-full h-6 w-6 flex items-center justify-center text-xs font-bold">
+                            {(ride.rider as {full_name?: string}).full_name?.charAt(0) ?? 'R'}
+                          </div>
+                          <span>{(ride.rider as {full_name?: string}).full_name ?? 'Rider'}</span>
+                          <span className="text-gray-400">⭐ {((ride.rider as {rating?: number}).rating ?? 5.0).toFixed(1)}</span>
+                        </div>
+                      )}
                       <div className="space-y-1">
                         <div className="flex items-center gap-2">
                           <div className="h-2 w-2 rounded-full bg-green-500" />

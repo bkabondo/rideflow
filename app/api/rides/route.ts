@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createAdminClient } from '@/lib/supabase/admin'
 import { stripe, calculateRidePrice, getMockDistance } from '@/lib/stripe'
 
 export async function GET() {
@@ -13,7 +14,10 @@ export async function GET() {
     .eq('id', user.id)
     .single()
 
-  let query = supabase
+  // Admin uses service-role client to bypass RLS and see all rides
+  const queryClient = profile?.role === 'admin' ? createAdminClient() : supabase
+
+  let query = queryClient
     .from('rideflow_rides')
     .select('*, rider:rideflow_users!rider_id(id,full_name,email,rating), driver:rideflow_users!driver_id(id,full_name,email,rating)')
     .order('created_at', { ascending: false })
@@ -23,6 +27,7 @@ export async function GET() {
   } else if (profile?.role === 'driver') {
     query = query.or(`driver_id.eq.${user.id},status.eq.pending`)
   }
+  // admin: no filter — see everything
 
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -43,7 +48,7 @@ export async function POST(request: Request) {
 
   const distance_km = getMockDistance()
   const duration_minutes = Math.round(distance_km * 2.5)
-  const estimated_price = calculateRidePrice(distance_km, ride_type)
+  const estimated_price = calculateRidePrice(distance_km, duration_minutes, ride_type)
 
   // Get or create Stripe customer
   const { data: userProfile } = await supabase
