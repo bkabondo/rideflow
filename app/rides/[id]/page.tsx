@@ -25,7 +25,6 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
 
   if (!ride) notFound()
 
-  // Check access
   const canView =
     ride.rider_id === user.id ||
     ride.driver_id === user.id ||
@@ -41,7 +40,7 @@ export default async function RidePage({ params }: { params: Promise<{ id: strin
     .single()
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0E0E0E]">
       <Navbar user={profile} />
       <main className="max-w-2xl mx-auto px-4 py-8">
         <RideDetailClient ride={ride} user={profile} existingRating={rating} />

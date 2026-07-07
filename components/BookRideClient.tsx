@@ -6,10 +6,6 @@ import { MapPin, Car, CreditCard, Loader2, CheckCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { loadStripe } from '@stripe/stripe-js'
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 
 const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!)
 
@@ -26,10 +22,16 @@ interface RideData {
 }
 
 const rideTypes = [
-  { id: 'economy' as RideType, label: 'Economy', emoji: '🚗', desc: 'Affordable', min: '$5' },
-  { id: 'comfort' as RideType, label: 'Comfort', emoji: '🚙', desc: 'Extra space', min: '$8' },
-  { id: 'premium' as RideType, label: 'Premium', emoji: '🏎️', desc: 'Luxury', min: '$12' },
+  { id: 'economy' as RideType, label: 'Economy', emoji: '🚗', desc: 'Affordable everyday ride', min: 'From $5' },
+  { id: 'comfort' as RideType, label: 'Comfort', emoji: '🚙', desc: 'Extra space, premium feel', min: 'From $8' },
+  { id: 'premium' as RideType, label: 'Premium', emoji: '🏎️', desc: 'Full luxury experience', min: 'From $12' },
 ]
+
+const cardCls = 'bg-[#141414] border border-[#2A2A2A] rounded-2xl p-6'
+const inputCls = 'w-full bg-[#1C1C1C] border border-[#363636] focus:border-[#C9A028] text-[#F0ECE4] placeholder:text-[#555] rounded-xl px-4 py-3 text-sm focus:outline-none transition-colors'
+const labelCls = 'text-[#A08020] text-[10px] font-bold uppercase tracking-widest'
+const goldBtn = 'w-full bg-[#C9A028] hover:bg-[#B8901E] disabled:opacity-60 text-black font-bold rounded-xl py-3 text-sm transition-colors flex items-center justify-center gap-2'
+const ghostBtn = 'flex-1 border border-[#363636] text-[#999] hover:border-[#C9A028] hover:text-[#C9A028] bg-transparent rounded-xl py-3 text-sm font-medium transition-colors'
 
 function PaymentForm({ clientSecret, rideId, onSuccess }: { clientSecret: string; rideId: string; onSuccess: () => void }) {
   const stripe = useStripe()
@@ -40,20 +42,9 @@ function PaymentForm({ clientSecret, rideId, onSuccess }: { clientSecret: string
     e.preventDefault()
     if (!stripe || !elements) return
     setLoading(true)
-
-    const { error, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: 'if_required',
-    })
-
-    if (error) {
-      toast.error(error.message || 'Payment failed')
-      setLoading(false)
-      return
-    }
-
+    const { error, paymentIntent } = await stripe.confirmPayment({ elements, redirect: 'if_required' })
+    if (error) { toast.error(error.message || 'Payment failed'); setLoading(false); return }
     if (paymentIntent?.status === 'requires_capture' || paymentIntent?.status === 'succeeded') {
-      // Update ride payment status
       await fetch(`/api/rides/${rideId}/payment-authorized`, { method: 'PATCH' }).catch(() => {})
       toast.success('Payment authorized! Your ride is booked.')
       onSuccess()
@@ -66,28 +57,21 @@ function PaymentForm({ clientSecret, rideId, onSuccess }: { clientSecret: string
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <PaymentElement />
-      <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-        <p className="font-medium">Test Card</p>
-        <p>4242 4242 4242 4242 | 12/30 | 123 | 42424</p>
+      <div className="bg-[#1A1500] border border-[#C9A028]/20 rounded-xl p-3 text-xs text-[#C9A028]/80">
+        <p className="font-semibold text-[#C9A028] mb-1">Test Card</p>
+        <p>4242 4242 4242 4242 &nbsp;|&nbsp; 12/30 &nbsp;|&nbsp; 123 &nbsp;|&nbsp; 42424</p>
       </div>
-      <Button
-        type="submit"
-        disabled={loading || !stripe}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-      >
-        {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CreditCard className="h-4 w-4 mr-2" />}
+      <button type="submit" disabled={loading || !stripe} className={goldBtn}>
+        {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
         Authorize Payment
-      </Button>
+      </button>
     </form>
   )
 }
 
 async function getAddressFromCoords(lat: number, lon: number): Promise<string> {
   try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`,
-      { headers: { 'Accept-Language': 'en' } }
-    )
+    const res = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json`, { headers: { 'Accept-Language': 'en' } })
     const data = await res.json()
     return data.display_name || `${lat.toFixed(4)}, ${lon.toFixed(4)}`
   } catch {
@@ -100,11 +84,9 @@ export default function BookRideClient() {
   const [step, setStep] = useState(1)
   const [loading, setLoading] = useState(false)
   const [locating, setLocating] = useState(false)
-  const [form, setForm] = useState({
-    pickup_address: '',
-    dropoff_address: '',
-    ride_type: 'economy' as RideType,
-  })
+  const [form, setForm] = useState({ pickup_address: '', dropoff_address: '', ride_type: 'economy' as RideType })
+  const [rideData, setRideData] = useState<RideData | null>(null)
+  const [clientSecret, setClientSecret] = useState<string | null>(null)
 
   async function useMyLocation() {
     if (!navigator.geolocation) { toast.error('Geolocation not supported'); return }
@@ -118,52 +100,34 @@ export default function BookRideClient() {
       () => { toast.error('Could not get your location'); setLocating(false) }
     )
   }
-  const [rideData, setRideData] = useState<RideData | null>(null)
-  const [clientSecret, setClientSecret] = useState<string | null>(null)
 
   async function handleBookRide(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
-
-    const res = await fetch('/api/rides', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
-    })
-
+    const res = await fetch('/api/rides', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) })
     setLoading(false)
-
-    if (!res.ok) {
-      const err = await res.json()
-      toast.error(err.error || 'Failed to create ride')
-      return
-    }
-
+    if (!res.ok) { const err = await res.json(); toast.error(err.error || 'Failed to create ride'); return }
     const data = await res.json()
     setRideData(data.ride)
     setClientSecret(data.clientSecret)
     setStep(3)
   }
 
-  function handlePaymentSuccess() {
-    setTimeout(() => router.push('/dashboard'), 2000)
-  }
-
   return (
     <div className="space-y-6">
-      {/* Steps indicator */}
+      {/* Steps */}
       <div className="flex items-center gap-2">
         {[1, 2, 3].map((s) => (
           <div key={s} className="flex items-center gap-2">
-            <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold ${
-              step > s ? 'bg-green-600 text-white' : step === s ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-500'
+            <div className={`h-8 w-8 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
+              step > s ? 'bg-[#2D7A2D] text-white' : step === s ? 'bg-[#C9A028] text-black' : 'bg-[#1C1C1C] border border-[#363636] text-[#555]'
             }`}>
               {step > s ? <CheckCircle className="h-4 w-4" /> : s}
             </div>
-            {s < 3 && <div className={`h-0.5 w-8 ${step > s ? 'bg-green-600' : 'bg-gray-200'}`} />}
+            {s < 3 && <div className={`h-0.5 w-8 transition-colors ${step > s ? 'bg-[#2D7A2D]' : 'bg-[#252525]'}`} />}
           </div>
         ))}
-        <div className="ml-2 text-sm text-gray-500">
+        <div className="ml-2 text-sm text-[#777]">
           {step === 1 && 'Enter locations'}
           {step === 2 && 'Choose ride type'}
           {step === 3 && 'Payment'}
@@ -172,160 +136,113 @@ export default function BookRideClient() {
 
       {/* Step 1: Locations */}
       {step === 1 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <MapPin className="h-5 w-5 text-blue-600" />
-              Where are you going?
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="pickup">Pickup Location</Label>
+        <div className={cardCls}>
+          <h2 className="text-[#F0ECE4] font-bold text-lg mb-5 flex items-center gap-2">
+            <MapPin className="h-5 w-5 text-[#C9A028]" /> Where are you going?
+          </h2>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <label className={labelCls}>Pickup Location</label>
               <div className="relative">
-                <div className="absolute left-3 top-3 h-2 w-2 rounded-full bg-green-500" />
-                <Input
-                  id="pickup"
-                  placeholder="Enter pickup address"
-                  value={form.pickup_address}
-                  onChange={(e) => setForm({ ...form, pickup_address: e.target.value })}
-                  className="pl-8 pr-36"
-                />
-                <button
-                  type="button"
-                  onClick={useMyLocation}
-                  disabled={locating}
-                  className="absolute right-2 top-1.5 text-xs text-blue-600 hover:text-blue-700 font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-blue-50 disabled:opacity-50"
-                >
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-[#2D7A2D]" />
+                <input placeholder="Enter pickup address" value={form.pickup_address}
+                  onChange={e => setForm({ ...form, pickup_address: e.target.value })}
+                  className={inputCls + ' pl-8 pr-36'} />
+                <button type="button" onClick={useMyLocation} disabled={locating}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-[#C9A028] hover:text-[#E8B830] font-medium flex items-center gap-1 px-2 py-1 rounded hover:bg-[#C9A028]/10 disabled:opacity-50 transition-colors">
                   <MapPin className="h-3 w-3" />
-                  {locating ? 'Locating…' : 'Use My Location'}
+                  {locating ? 'Locating…' : 'My Location'}
                 </button>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="dropoff">Dropoff Location</Label>
+            <div className="space-y-1.5">
+              <label className={labelCls}>Dropoff Location</label>
               <div className="relative">
-                <div className="absolute left-3 top-3 h-2 w-2 rounded-full bg-red-500" />
-                <Input
-                  id="dropoff"
-                  placeholder="Enter dropoff address"
-                  value={form.dropoff_address}
-                  onChange={(e) => setForm({ ...form, dropoff_address: e.target.value })}
-                  className="pl-8"
-                />
+                <div className="absolute left-3.5 top-1/2 -translate-y-1/2 h-2.5 w-2.5 rounded-full bg-red-500" />
+                <input placeholder="Enter dropoff address" value={form.dropoff_address}
+                  onChange={e => setForm({ ...form, dropoff_address: e.target.value })}
+                  className={inputCls + ' pl-8'} />
               </div>
             </div>
-            <Button
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={() => setStep(2)}
-              disabled={!form.pickup_address || !form.dropoff_address}
-            >
+            <button className={goldBtn} onClick={() => setStep(2)}
+              disabled={!form.pickup_address || !form.dropoff_address}>
               Choose Ride Type
-            </Button>
-          </CardContent>
-        </Card>
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Step 2: Ride Type */}
       {step === 2 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Car className="h-5 w-5 text-blue-600" />
-              Choose Your Ride
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-3">
-              {rideTypes.map((rt) => (
-                <button
-                  key={rt.id}
-                  type="button"
-                  onClick={() => setForm({ ...form, ride_type: rt.id })}
-                  className={`w-full p-4 rounded-lg border-2 text-left transition-all ${
-                    form.ride_type === rt.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-2xl">{rt.emoji}</span>
-                      <div>
-                        <p className="font-semibold">{rt.label}</p>
-                        <p className="text-sm text-gray-500">{rt.desc}</p>
-                      </div>
+        <div className={cardCls}>
+          <h2 className="text-[#F0ECE4] font-bold text-lg mb-5 flex items-center gap-2">
+            <Car className="h-5 w-5 text-[#C9A028]" /> Choose Your Ride
+          </h2>
+          <div className="space-y-3 mb-4">
+            {rideTypes.map(rt => (
+              <button key={rt.id} type="button" onClick={() => setForm({ ...form, ride_type: rt.id })}
+                className={`w-full p-4 rounded-xl border-2 text-left transition-all ${
+                  form.ride_type === rt.id
+                    ? 'border-[#C9A028] bg-[#C9A028]/10'
+                    : 'border-[#2A2A2A] hover:border-[#3A3A3A] bg-[#0E0E0E]'
+                }`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">{rt.emoji}</span>
+                    <div>
+                      <p className={`font-semibold ${form.ride_type === rt.id ? 'text-[#C9A028]' : 'text-[#E8E4DC]'}`}>{rt.label}</p>
+                      <p className="text-sm text-[#777]">{rt.desc}</p>
                     </div>
-                    <span className="text-sm font-medium text-gray-600">From {rt.min}</span>
                   </div>
-                </button>
-              ))}
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-600">
-              <p className="font-medium mb-1">Trip Summary</p>
-              <p>📍 {form.pickup_address}</p>
-              <p>🏁 {form.dropoff_address}</p>
-            </div>
-            <div className="flex gap-3">
-              <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                Back
-              </Button>
-              <Button
-                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
-                onClick={handleBookRide}
-                disabled={loading}
-              >
-                {loading ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                Confirm & Pay
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+                  <span className={`text-sm font-medium ${form.ride_type === rt.id ? 'text-[#C9A028]' : 'text-[#666]'}`}>{rt.min}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+          <div className="bg-[#0E0E0E] border border-[#2A2A2A] rounded-xl p-3 text-sm text-[#777] mb-4">
+            <p className="font-medium text-[#999] mb-1">Trip Summary</p>
+            <p>📍 {form.pickup_address}</p>
+            <p>🏁 {form.dropoff_address}</p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setStep(1)} className={ghostBtn}>Back</button>
+            <button className="flex-1 bg-[#C9A028] hover:bg-[#B8901E] disabled:opacity-60 text-black font-bold rounded-xl py-3 text-sm transition-colors flex items-center justify-center gap-2"
+              onClick={handleBookRide} disabled={loading}>
+              {loading && <Loader2 className="h-4 w-4 animate-spin" />}
+              Confirm & Pay
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Step 3: Payment */}
       {step === 3 && rideData && clientSecret && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <CreditCard className="h-5 w-5 text-blue-600" />
-              Payment Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="bg-gray-50 rounded-lg p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Ride Type</span>
-                <span className="font-medium capitalize">{rideData.ride_type}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Distance</span>
-                <span className="font-medium">{rideData.distance_km?.toFixed(1)} km</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Duration</span>
-                <span className="font-medium">{rideData.duration_minutes} min</span>
-              </div>
-              <div className="border-t pt-2 flex justify-between">
-                <span className="font-semibold">Total</span>
-                <span className="text-xl font-bold text-green-700">${rideData.estimated_price?.toFixed(2)}</span>
-              </div>
+        <div className={cardCls}>
+          <h2 className="text-[#F0ECE4] font-bold text-lg mb-5 flex items-center gap-2">
+            <CreditCard className="h-5 w-5 text-[#C9A028]" /> Payment Details
+          </h2>
+          <div className="bg-[#0E0E0E] border border-[#2A2A2A] rounded-xl p-4 space-y-2 mb-4">
+            <div className="flex justify-between text-sm">
+              <span className="text-[#777]">Ride Type</span>
+              <span className="font-medium text-[#E8E4DC] capitalize">{rideData.ride_type}</span>
             </div>
-            <Elements
-              stripe={stripePromise}
-              options={{
-                clientSecret,
-                appearance: { theme: 'stripe' },
-              }}
-            >
-              <PaymentForm
-                clientSecret={clientSecret}
-                rideId={rideData.id}
-                onSuccess={handlePaymentSuccess}
-              />
-            </Elements>
-          </CardContent>
-        </Card>
+            <div className="flex justify-between text-sm">
+              <span className="text-[#777]">Distance</span>
+              <span className="font-medium text-[#E8E4DC]">{rideData.distance_km?.toFixed(1)} km</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-[#777]">Duration</span>
+              <span className="font-medium text-[#E8E4DC]">{rideData.duration_minutes} min</span>
+            </div>
+            <div className="border-t border-[#2A2A2A] pt-2 flex justify-between">
+              <span className="font-semibold text-[#F0ECE4]">Total</span>
+              <span className="text-xl font-bold text-[#C9A028]">${rideData.estimated_price?.toFixed(2)}</span>
+            </div>
+          </div>
+          <Elements stripe={stripePromise} options={{ clientSecret, appearance: { theme: 'night', variables: { colorPrimary: '#C9A028' } } }}>
+            <PaymentForm clientSecret={clientSecret} rideId={rideData.id} onSuccess={() => setTimeout(() => router.push('/dashboard'), 2000)} />
+          </Elements>
+        </div>
       )}
     </div>
   )

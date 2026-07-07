@@ -2,73 +2,58 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
-import { Car, Clock, MapPin, CheckCircle, DollarSign, RefreshCw, Loader2 } from 'lucide-react'
+import { Car, Clock, CheckCircle, DollarSign, RefreshCw, Loader2, Calendar, MapPin, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Badge } from '@/components/ui/badge'
-import type { RideflowUser, Ride } from '@/lib/types'
+import type { RideflowUser, Ride, Inquiry } from '@/lib/types'
 
-interface DriverDashboardProps {
-  user: RideflowUser
-}
+interface DriverDashboardProps { user: RideflowUser }
 
 export default function DriverDashboard({ user }: DriverDashboardProps) {
   const [rides, setRides] = useState<Ride[]>([])
+  const [reservations, setReservations] = useState<Inquiry[]>([])
   const [loading, setLoading] = useState(true)
   const [accepting, setAccepting] = useState<string | null>(null)
   const [completing, setCompleting] = useState<string | null>(null)
 
-  const fetchRides = useCallback(async () => {
-    const res = await fetch('/api/rides')
-    if (res.ok) {
-      const data = await res.json()
-      setRides(data)
+  const fetchData = useCallback(async () => {
+    const [ridesRes, inqRes] = await Promise.all([fetch('/api/rides'), fetch('/api/inquiries')])
+    if (ridesRes.ok) setRides(await ridesRes.json())
+    if (inqRes.ok) {
+      const all: Inquiry[] = await inqRes.json()
+      // Show confirmed reservations assigned to this driver (hide payment info)
+      setReservations(all.filter(i => i.driver_id === user.id && ['confirmed', 'in_progress'].includes(i.status)))
     }
     setLoading(false)
-  }, [])
+  }, [user.id])
 
-  useEffect(() => {
-    fetchRides()
-  }, [fetchRides])
+  useEffect(() => { fetchData() }, [fetchData])
 
-  // Real-time updates
   useEffect(() => {
     const supabase = createClient()
     const channel = supabase
       .channel('driver-rides')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rideflow_rides' }, () => {
-        fetchRides()
-      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rideflow_rides' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rideflow_inquiries' }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [fetchRides])
+  }, [fetchData])
 
   async function acceptRide(rideId: string) {
     setAccepting(rideId)
     const res = await fetch(`/api/rides/${rideId}/accept`, { method: 'PATCH' })
     setAccepting(null)
-    if (res.ok) {
-      toast.success('Ride accepted! Head to pickup location.')
-      fetchRides()
-    } else {
-      const err = await res.json()
-      toast.error(err.error)
-    }
+    if (res.ok) { toast.success('Ride accepted! Head to pickup.'); fetchData() }
+    else { const err = await res.json(); toast.error(err.error) }
   }
 
   async function completeRide(rideId: string) {
     setCompleting(rideId)
     const res = await fetch(`/api/rides/${rideId}/complete`, { method: 'PATCH' })
     setCompleting(null)
-    if (res.ok) {
-      toast.success('Ride completed! Payment captured.')
-      fetchRides()
-    } else {
-      const err = await res.json()
-      toast.error(err.error)
-    }
+    if (res.ok) { toast.success('Ride completed! Payment captured.'); fetchData() }
+    else { const err = await res.json(); toast.error(err.error) }
   }
 
   const pendingRides = rides.filter(r => r.status === 'pending')
@@ -77,180 +62,215 @@ export default function DriverDashboard({ user }: DriverDashboardProps) {
   const myCompletedRides = myRides.filter(r => r.status === 'completed')
   const earnings = myCompletedRides.reduce((sum, r) => sum + (r.final_price || 0), 0)
 
+  const card = 'bg-[#141414] border border-[#2A2A2A] rounded-2xl p-5'
+
   return (
     <div className="space-y-6">
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="bg-blue-100 p-2 rounded-lg"><Car className="h-5 w-5 text-blue-600" /></div>
-              <div>
-                <p className="text-sm text-gray-500">Total Rides</p>
-                <p className="text-2xl font-bold">{myCompletedRides.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="bg-green-100 p-2 rounded-lg"><DollarSign className="h-5 w-5 text-green-600" /></div>
-              <div>
-                <p className="text-sm text-gray-500">Total Earnings</p>
-                <p className="text-2xl font-bold">${earnings.toFixed(2)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center gap-3">
-              <div className="bg-yellow-100 p-2 rounded-lg"><Clock className="h-5 w-5 text-yellow-600" /></div>
-              <div>
-                <p className="text-sm text-gray-500">Pending Rides</p>
-                <p className="text-2xl font-bold">{pendingRides.length}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-3 gap-4">
+        {[
+          { label: 'Rides Done', value: myCompletedRides.length, icon: <Car className="h-5 w-5" />, color: 'text-[#C9A028]' },
+          { label: 'Earnings', value: `$${earnings.toFixed(2)}`, icon: <DollarSign className="h-5 w-5" />, color: 'text-green-400' },
+          { label: 'Assigned', value: reservations.length + pendingRides.length, icon: <Clock className="h-5 w-5" />, color: 'text-yellow-400' },
+        ].map(stat => (
+          <div key={stat.label} className={card}>
+            <div className={`${stat.color} mb-2`}>{stat.icon}</div>
+            <p className="text-[#777] text-xs">{stat.label}</p>
+            <p className="text-2xl font-bold text-[#F5F0E8]">{stat.value}</p>
+          </div>
+        ))}
       </div>
 
-      {/* Current Active Ride */}
-      {myActiveRide && (
-        <Card className="border-green-200 bg-green-50">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Car className="h-5 w-5 text-green-600" />
-              Current Ride
-              <Badge className="bg-green-100 text-green-700">Active</Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 text-green-600 mt-0.5" />
-                <div>
-                  <p className="text-xs text-gray-500">Pickup</p>
-                  <p className="font-medium text-sm">{myActiveRide.pickup_address}</p>
+      {/* Assigned Reservations (from inquiry system) */}
+      {reservations.length > 0 && (
+        <div className={card + ' space-y-4'}>
+          <div className="flex items-center gap-2">
+            <Calendar className="h-5 w-5 text-[#C9A028]" />
+            <h3 className="text-[#F5F0E8] font-semibold">Your Scheduled Reservations ({reservations.length})</h3>
+          </div>
+          <div className="space-y-3">
+            {reservations.map(res => {
+              const prefs = res.preferences || {}
+              return (
+                <div key={res.id} className="border border-[#C9A028]/20 bg-[#C9A028]/3 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border border-[#C9A028]/40 text-[#C9A028] bg-[#C9A028]/10">
+                      Reservation #{res.id.slice(0, 6).toUpperCase()}
+                    </span>
+                    <span className="text-xs text-[#888]">
+                      {new Date(res.pickup_datetime).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {' · '}
+                      {new Date(res.pickup_datetime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
+                      <div className="h-2 w-2 rounded-full bg-green-400 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-[#777]">Pickup</p>
+                        <p className="text-sm text-[#E8E4DC]">{res.pickup_address}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-2">
+                      <div className="h-2 w-2 rounded-full bg-red-400 mt-1.5 flex-shrink-0" />
+                      <div>
+                        <p className="text-[10px] text-[#777]">Dropoff</p>
+                        <p className="text-sm text-[#E8E4DC]">{res.dropoff_address}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-4 text-xs text-[#888]">
+                    <span className="flex items-center gap-1"><Car className="h-3 w-3 text-[#C9A028]" /><span className="capitalize">{res.vehicle_type}</span></span>
+                    <span className="flex items-center gap-1"><Users className="h-3 w-3 text-[#C9A028]" />{res.passengers} pax</span>
+                    <span className="flex items-center gap-1"><MapPin className="h-3 w-3 text-[#C9A028]" /><span className="capitalize">{res.luggage}</span></span>
+                  </div>
+
+                  {/* Preferences (visible to driver) */}
+                  {(prefs.occasion || prefs.music || prefs.temperature || (prefs.extras?.length ?? 0) > 0 || prefs.special_requests) && (
+                    <div className="bg-[#0E0E0E] border border-[#2A2A2A] rounded-xl p-3 text-xs space-y-1 text-[#888]">
+                      <p className="text-[#A08020] font-semibold mb-1.5">Client Preferences</p>
+                      {prefs.occasion && <p>🎉 <span>{prefs.occasion}</span></p>}
+                      {prefs.music && <p>🎵 <span>{prefs.music}</span></p>}
+                      {prefs.temperature && <p>🌡️ <span>{prefs.temperature}</span></p>}
+                      {(prefs.extras?.length ?? 0) > 0 && <p>✨ <span className="text-[#C9A028]">{prefs.extras?.join(', ')}</span></p>}
+                      {prefs.special_requests && <p className="italic">"{prefs.special_requests}"</p>}
+                    </div>
+                  )}
+
+                  {/* Rider info */}
+                  {res.rider && (
+                    <div className="flex items-center gap-2 pt-1">
+                      <div className="h-7 w-7 rounded-full bg-[#C9A028] flex items-center justify-center text-xs font-bold text-black">
+                        {res.rider.full_name?.charAt(0) ?? 'R'}
+                      </div>
+                      <div>
+                        <p className="text-sm text-[#E8E4DC] font-medium">{res.rider.full_name}</p>
+                        <p className="text-xs text-[#777]">⭐ {res.rider.rating?.toFixed(1)}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-              <div className="flex items-start gap-2">
-                <MapPin className="h-4 w-4 text-red-600 mt-0.5" />
-                <div>
-                  <p className="text-xs text-gray-500">Dropoff</p>
-                  <p className="font-medium text-sm">{myActiveRide.dropoff_address}</p>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center justify-between pt-2">
-              <p className="text-lg font-bold text-green-700">${myActiveRide.estimated_price?.toFixed(2)}</p>
-              <div className="flex gap-2">
-                <Link href={`/rides/${myActiveRide.id}`}>
-                  <Button variant="outline" size="sm">Details</Button>
-                </Link>
-                <Button
-                  size="sm"
-                  className="bg-green-600 hover:bg-green-700 text-white"
-                  onClick={() => completeRide(myActiveRide.id)}
-                  disabled={completing === myActiveRide.id}
-                >
-                  {completing === myActiveRide.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
-                  Mark Complete
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              )
+            })}
+          </div>
+        </div>
       )}
 
-      {/* Available Rides */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>Available Rides ({pendingRides.length})</CardTitle>
-          <Button variant="ghost" size="sm" onClick={fetchRides}>
-            <RefreshCw className="h-4 w-4" />
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="text-center py-8 text-gray-400">Loading rides...</div>
-          ) : pendingRides.length === 0 ? (
-            <div className="text-center py-8">
-              <Clock className="h-10 w-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-500">No pending rides available</p>
-              <p className="text-sm text-gray-400">Check back soon!</p>
+      {/* Active Ride */}
+      {myActiveRide && (
+        <div className="bg-[#141414] border border-green-500/30 rounded-2xl p-5 space-y-4">
+          <div className="flex items-center gap-2">
+            <Car className="h-5 w-5 text-green-400" />
+            <h3 className="text-[#F5F0E8] font-semibold">Current Ride</h3>
+            <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border border-green-500/50 text-green-400 bg-green-500/10">Active</span>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            {[
+              { dot: 'bg-green-400', label: 'Pickup', val: myActiveRide.pickup_address },
+              { dot: 'bg-red-400', label: 'Dropoff', val: myActiveRide.dropoff_address },
+            ].map(row => (
+              <div key={row.label} className="flex items-start gap-2">
+                <div className={`h-2 w-2 rounded-full ${row.dot} mt-1.5 flex-shrink-0`} />
+                <div><p className="text-[10px] text-[#777]">{row.label}</p><p className="text-sm text-[#F5F0E8]">{row.val}</p></div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between pt-1">
+            <p className="text-xl font-bold text-[#C9A028]">${myActiveRide.estimated_price?.toFixed(2)}</p>
+            <div className="flex gap-2">
+              <Link href={`/rides/${myActiveRide.id}`}>
+                <button className="text-sm text-[#888] hover:text-[#C9A028] border border-[#2A2A2A] px-3 py-1.5 rounded-lg hover:border-[#C9A028]/50 transition-all">Details</button>
+              </Link>
+              <Button size="sm" className="bg-[#C9A028] hover:bg-[#B8901E] text-black font-bold"
+                onClick={() => completeRide(myActiveRide.id)} disabled={completing === myActiveRide.id}>
+                {completing === myActiveRide.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4 mr-1" />}
+                Mark Complete
+              </Button>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {pendingRides.map((ride) => (
-                <div key={ride.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1 min-w-0">
+          </div>
+        </div>
+      )}
+
+      {/* Available Rides (instant book rides) */}
+      <div className={card + ' space-y-4'}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-[#F5F0E8] font-semibold">Available Rides ({pendingRides.length})</h3>
+          <button onClick={fetchData} className="text-[#777] hover:text-[#C9A028] transition-colors p-1">
+            <RefreshCw className="h-4 w-4" />
+          </button>
+        </div>
+        {loading ? (
+          <div className="text-center py-8 text-[#777]">Loading…</div>
+        ) : pendingRides.length === 0 ? (
+          <div className="text-center py-8">
+            <Clock className="h-10 w-10 text-[#252525] mx-auto mb-2" />
+            <p className="text-[#777]">No pending rides right now</p>
+            <p className="text-xs text-[#666]">Check back soon!</p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {pendingRides.map(ride => (
+              <div key={ride.id} className="border border-[#2A2A2A] hover:border-[#C9A028]/30 rounded-xl p-4 transition-all">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded border border-yellow-500/50 text-yellow-400 bg-yellow-500/10 capitalize">{ride.ride_type}</span>
+                      <span className="text-xs text-[#777]">{ride.distance_km?.toFixed(1)} km · {ride.duration_minutes} min</span>
+                    </div>
+                    {ride.rider && (
                       <div className="flex items-center gap-2 mb-2">
-                        <Badge className="bg-yellow-100 text-yellow-700 capitalize">{ride.ride_type}</Badge>
-                        <span className="text-sm text-gray-500">{ride.distance_km?.toFixed(1)} km • {ride.duration_minutes} min</span>
+                        <div className="bg-[#C9A028] text-black rounded-full h-6 w-6 flex items-center justify-center text-xs font-bold">
+                          {(ride.rider as {full_name?: string}).full_name?.charAt(0) ?? 'R'}
+                        </div>
+                        <span className="text-sm text-[#888]">{(ride.rider as {full_name?: string}).full_name ?? 'Rider'}</span>
+                        <span className="text-xs text-[#777]">⭐ {((ride.rider as {rating?: number}).rating ?? 5.0).toFixed(1)}</span>
                       </div>
-                      {/* Rider info */}
-                      {ride.rider && (
-                        <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
-                          <div className="bg-gray-200 rounded-full h-6 w-6 flex items-center justify-center text-xs font-bold">
-                            {(ride.rider as {full_name?: string}).full_name?.charAt(0) ?? 'R'}
-                          </div>
-                          <span>{(ride.rider as {full_name?: string}).full_name ?? 'Rider'}</span>
-                          <span className="text-gray-400">⭐ {((ride.rider as {rating?: number}).rating ?? 5.0).toFixed(1)}</span>
-                        </div>
-                      )}
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-2 rounded-full bg-green-500" />
-                          <p className="text-sm truncate">{ride.pickup_address}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <div className="h-2 w-2 rounded-full bg-red-500" />
-                          <p className="text-sm truncate">{ride.dropoff_address}</p>
-                        </div>
+                    )}
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-green-400 flex-shrink-0" />
+                        <p className="text-sm text-[#888] truncate">{ride.pickup_address}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 w-2 rounded-full bg-red-400 flex-shrink-0" />
+                        <p className="text-sm text-[#888] truncate">{ride.dropoff_address}</p>
                       </div>
                     </div>
-                    <div className="ml-4 text-right">
-                      <p className="text-xl font-bold text-green-700">${ride.estimated_price?.toFixed(2)}</p>
-                      <Button
-                        size="sm"
-                        className="mt-2 bg-blue-600 hover:bg-blue-700 text-white"
-                        onClick={() => acceptRide(ride.id)}
-                        disabled={!!accepting || !!myActiveRide}
-                      >
-                        {accepting === ride.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept'}
-                      </Button>
-                    </div>
+                  </div>
+                  <div className="ml-4 text-right flex-shrink-0">
+                    <p className="text-xl font-bold text-[#C9A028]">${ride.estimated_price?.toFixed(2)}</p>
+                    <Button size="sm" className="mt-2 bg-[#C9A028] hover:bg-[#B8901E] text-black font-bold"
+                      onClick={() => acceptRide(ride.id)} disabled={!!accepting || !!myActiveRide}>
+                      {accepting === ride.id ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Accept'}
+                    </Button>
                   </div>
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
-      {/* Ride History */}
+      {/* Completed History */}
       {myCompletedRides.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle>Completed Rides</CardTitle></CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {myCompletedRides.slice(0, 10).map((ride) => (
-                <Link key={ride.id} href={`/rides/${ride.id}`}>
-                  <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-gray-50 transition-colors cursor-pointer">
-                    <div>
-                      <p className="text-sm font-medium">{ride.pickup_address} → {ride.dropoff_address}</p>
-                      <p className="text-xs text-gray-400">{new Date(ride.created_at).toLocaleDateString()}</p>
-                    </div>
-                    <p className="font-bold text-green-700">${(ride.final_price || 0).toFixed(2)}</p>
+        <div className={card + ' space-y-4'}>
+          <h3 className="text-[#F5F0E8] font-semibold">Completed Rides</h3>
+          <div className="space-y-2">
+            {myCompletedRides.slice(0, 10).map(ride => (
+              <Link key={ride.id} href={`/rides/${ride.id}`}>
+                <div className="flex items-center justify-between p-3.5 rounded-xl border border-[#2A2A2A] hover:bg-[#111] transition-all cursor-pointer">
+                  <div>
+                    <p className="text-sm text-[#888]">{ride.pickup_address} → {ride.dropoff_address}</p>
+                    <p className="text-[10px] text-[#777]">{new Date(ride.created_at).toLocaleDateString()}</p>
                   </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+                  <p className="font-bold text-[#C9A028]">${(ride.final_price || 0).toFixed(2)}</p>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
       )}
     </div>
   )

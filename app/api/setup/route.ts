@@ -57,6 +57,34 @@ export async function POST(request: Request) {
           CREATE POLICY "rf_rides_parties" ON rideflow_rides FOR ALL USING (rider_id=auth.uid() OR driver_id=auth.uid() OR (SELECT role FROM rideflow_users WHERE id=auth.uid()) IN ('admin','driver'));
         END IF;
       END $$;
+      CREATE TABLE IF NOT EXISTS rideflow_inquiries (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        rider_id UUID NOT NULL REFERENCES rideflow_users(id) ON DELETE CASCADE,
+        pickup_address TEXT NOT NULL,
+        dropoff_address TEXT NOT NULL,
+        pickup_datetime TIMESTAMPTZ NOT NULL,
+        passengers INTEGER DEFAULT 1,
+        luggage TEXT DEFAULT 'none',
+        vehicle_type TEXT DEFAULT 'sedan' CHECK (vehicle_type IN ('sedan','suv','limousine','sprinter')),
+        preferences JSONB DEFAULT '{}',
+        status TEXT DEFAULT 'inquiry' CHECK (status IN ('inquiry','quoted','confirmed','declined','cancelled','in_progress','completed')),
+        quoted_amount NUMERIC,
+        suggested_price NUMERIC,
+        market_ref_price NUMERIC,
+        payment_mode TEXT DEFAULT 'required' CHECK (payment_mode IN ('required','optional','none')),
+        quote_message TEXT,
+        stripe_payment_intent_id TEXT,
+        stripe_payment_status TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      GRANT ALL ON rideflow_inquiries TO anon, authenticated;
+      ALTER TABLE rideflow_inquiries ENABLE ROW LEVEL SECURITY;
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname='rf_inquiries_parties' AND tablename='rideflow_inquiries') THEN
+          CREATE POLICY "rf_inquiries_parties" ON rideflow_inquiries FOR ALL USING (rider_id=auth.uid() OR (SELECT role FROM rideflow_users WHERE id=auth.uid())='admin');
+        END IF;
+      END $$;
       CREATE TABLE IF NOT EXISTS rideflow_ratings (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         ride_id UUID NOT NULL REFERENCES rideflow_rides(id) ON DELETE CASCADE UNIQUE,

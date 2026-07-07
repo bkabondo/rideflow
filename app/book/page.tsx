@@ -19,10 +19,10 @@ export default async function BookPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-[#0E0E0E]">
       <Navbar user={profile} />
       <main className="max-w-2xl mx-auto px-4 py-8">
-        <h1 className="text-2xl font-bold text-gray-900 mb-6">Book a Ride</h1>
+        <h1 className="text-2xl font-bold text-[#F0ECE4] mb-6">Book a Ride</h1>
         <BookRideClient />
       </main>
     </div>
