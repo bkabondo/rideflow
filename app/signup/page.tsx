@@ -19,7 +19,12 @@ export default function SignupPage() {
     const { data, error } = await supabase.auth.signUp({
       email: form.email,
       password: form.password,
-      options: { data: { full_name: form.full_name, role: form.role } },
+      options: {
+        data: { full_name: form.full_name, role: form.role },
+        // Without this, Supabase falls back to the project Site URL, which
+        // belongs to a different app entirely.
+        emailRedirectTo: `${window.location.origin}/auth/callback`,
+      },
     })
     if (error) { setLoading(false); toast.error(error.message); return }
     if (data.user) {
