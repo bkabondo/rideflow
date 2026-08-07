@@ -84,13 +84,6 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Test accounts */}
-        <div className="mt-4 p-4 bg-[#111] border border-[#222] rounded-xl text-xs text-[#666] space-y-1">
-          <p className="font-semibold text-[#888] mb-2">Test Accounts:</p>
-          <p>Admin: kabondobenjamin1@gmail.com / Admin@Kabondo123!</p>
-          <p>Driver: testuser1@proj.com / TestUser1@123</p>
-          <p>Rider: testuser2@proj.com / TestUser2@123</p>
-        </div>
       </div>
     </div>
   )
